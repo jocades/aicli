@@ -4,6 +4,7 @@ import sys
 import time
 import sqlite3
 import base64
+import json
 from pathlib import Path
 from typing import Literal
 
@@ -115,24 +116,16 @@ def insert_message(message: ChatCompletionMessageParam) -> int:
 
 
 class Action:
+    quit = 'quit'
+    clear = 'clear'
+    help = 'help'
     chat = 'chat'
     image = 'image'
-    clear = 'clear'
-    quit = 'quit'
-    help = 'help'
 
 
 def create_prompt() -> ChatCompletionUserMessageParam:
     print('[bold green]> [/]', end='')
     prompt = input()
-
-    # helth check
-
-    if prompt == '':
-        return create_prompt()
-    elif len(prompt.split()) == 1 and prompt not in Action.__dict__.keys():
-        print(f'Invalid command "{prompt}" (type "help" to see a list of available commands)\n')
-        return create_prompt()
 
     if prompt == Action.quit:
         print('Goodbye!')
@@ -142,23 +135,16 @@ def create_prompt() -> ChatCompletionUserMessageParam:
         os.system('cls' if os.name == 'nt' else 'clear')
         return create_prompt()
     elif prompt == Action.help:
-        print('\n- Available commands:')
+        print('Available commands:')
         for action in Action.__dict__.keys():
             if not action.startswith('__'):
-                print(f'\t- [bold blue]{action}[/]')
-        print()
+                print(f'  {action}')
         return create_prompt()
     elif prompt == Action.chat:
-        if state.mode == 'chat':
-            print('[red]- Chat mode is already active[/] (type "clear" to reset)')
-            return create_prompt()
         state.mode = 'chat'
         print('[bold green]- MODE:[/] [bold blue]chat[/]')
         return create_prompt()
     elif prompt == Action.image:
-        if state.mode == 'image':
-            print('[bold red]Image mode is already active[/]')
-            return create_prompt()
         state.mode = 'image'
         print('[bold green]- MODE:[/] [bold blue]image[/]')
         return create_prompt()
@@ -208,6 +194,7 @@ def generate_image(prompt: ChatCompletionUserMessageParam) -> None:
             response_format='b64_json',
         )
 
+    # decode and write to file
     img = response.data[0]
     if img.b64_json is None:
         raise Exception('Could not generate image')
@@ -215,7 +202,7 @@ def generate_image(prompt: ChatCompletionUserMessageParam) -> None:
     data = base64.b64decode(img.b64_json)
     file_name = f'{content[0:len(content) // 2].replace(' ', '_')}_{int(time.time())}.png'
 
-    output.mkdir(parents=True, exist_ok=True)
+    output.mkdir(exist_ok=True)
     (output / file_name).write_bytes(data)
 
     print(f'- [bold green]Image saved to[/] [bold blue]{output / file_name}[/]')
@@ -232,7 +219,9 @@ def chat_repl(prompt: ChatCompletionUserMessageParam) -> None:
     state.add_message(response)
 
 
-def repl() -> None:
+def main() -> None:
+    create_tables()
+
     while 1:
         try:
             prompt = create_prompt()
@@ -249,14 +238,3 @@ def repl() -> None:
             db.close()
             print('\nGoodbye!')
             sys.exit(0)
-
-
-def main() -> None:
-    create_tables()
-
-    print('\n\tWelcome to the AI Playground!')
-    print('\tType "help" to see a list of available commands.')
-    print('\tType "quit" or press "Ctrl+C" to exit.')
-    print()
-
-    repl()
