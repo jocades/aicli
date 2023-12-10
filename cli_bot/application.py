@@ -1,10 +1,11 @@
-from openai import AsyncOpenAI, OpenAI
-from openai.types.chat import ChatCompletionChunk, ChatCompletionMessageParam, ChatCompletionUserMessageParam
-from dotenv import load_dotenv
-import sys
 import os
+import sys
 import time
 import sqlite3
+
+from dotenv import load_dotenv
+from openai import OpenAI
+from openai.types.chat import ChatCompletionAssistantMessageParam,  ChatCompletionMessageParam, ChatCompletionUserMessageParam
 from rich import print
 
 from observable import Observable, Observer
@@ -15,6 +16,7 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 if not OPENAI_API_KEY:
     OPENAI_API_KEY = input('Enter your OpenAI API key: ')
+
 
 settings = dict(
     model='gpt-3.5-turbo',
@@ -28,13 +30,13 @@ class State(Observable):
     def __init__(self):
         super().__init__()
         self.chat_id: int | None = None
-        self._messages = []
+        self._messages: list[ChatCompletionMessageParam] = []
 
     @property
     def messages(self):
         return self._messages
 
-    def add_message(self, message: dict[str, str]):
+    def add_message(self, message: ChatCompletionMessageParam):
         self._messages.append(message)
         self.notify_observers(message)
 
@@ -50,8 +52,12 @@ class State(Observable):
 
 
 class StateObserver(Observer):
-    def update(self, observable: State, message: dict[str, str], *args, **kwargs):
+    def update(self, observable: State, message: ChatCompletionMessageParam):
         insert_message(message)
+
+
+state = State()
+state.add_observer(StateObserver())
 
 
 def create_tables():
@@ -76,7 +82,7 @@ def create_tables():
     db.commit()
 
 
-def insert_message(message: dict[str, str]) -> int | None:
+def insert_message(message: ChatCompletionMessageParam) -> int | None:
     cur = db.execute(
         'INSERT INTO message (chat_id, role, content, created_at, usage) VALUES (?, ?, ?, ?, ?)',
         (state.chat_id, message['role'], message['content'], int(time.time()), message.get('usage'))
@@ -94,11 +100,7 @@ def insert_chat() -> int | None:
     return cur.lastrowid
 
 
-state = State()
-state.add_observer(StateObserver())
-
-
-def create_prompt() -> dict[str, str]:
+def create_prompt() -> ChatCompletionUserMessageParam:
     print('[bold green]> [/]', end='')
     prompt = input()
 
@@ -116,10 +118,10 @@ def create_prompt() -> dict[str, str]:
     }
 
 
-def streaming_response() -> dict[str, str]:
+def streaming_response() -> ChatCompletionAssistantMessageParam:
     stream = ai.chat.completions.create(
         stream=True,
-        model='gpt-3.5-turbo',
+        model=settings['model'],
         messages=state.messages
     )
 
@@ -135,11 +137,10 @@ def streaming_response() -> dict[str, str]:
             response['content'] += chunk.choices[0].delta.content
     print('\n')
 
-    return response
+    return response  # type: ignore
 
 
 def main() -> None:
-
     create_tables()
 
     while 1:
@@ -152,6 +153,7 @@ def main() -> None:
             state.add_message(prompt)
             response = streaming_response()
             state.add_message(response)
+
         except KeyboardInterrupt:
             db.close()
             print('\nGoodbye!')
