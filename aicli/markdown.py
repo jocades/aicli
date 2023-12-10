@@ -2,7 +2,7 @@ from rich.markdown import Markdown
 from rich import print
 
 
-res = '''
+md = '''
 This is just some normal text.
 
 A list:
@@ -17,5 +17,4 @@ console.log("Hello, World!")
 ```
 '''
 
-for w in res.splitlines():
-    print(Markdown(w), end='', flush=True)
+print(Markdown(md))

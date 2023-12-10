@@ -122,17 +122,17 @@ class Action:
     help = 'help'
 
 
-def create_prompt() -> ChatCompletionUserMessageParam:
+def new_prompt() -> ChatCompletionUserMessageParam:
     print('[bold green]> [/]', end='')
     prompt = input()
 
     # helth check
 
-    if prompt == '':
-        return create_prompt()
+    if not prompt.strip():
+        return new_prompt()
     elif len(prompt.split()) == 1 and prompt not in Action.__dict__.keys():
-        print(f'Invalid command "{prompt}" (type "help" to see a list of available commands)\n')
-        return create_prompt()
+        print(f'[red]- Invalid command[/] "{prompt}" (type "help" to see a list of available commands)\n')
+        return new_prompt()
 
     if prompt == Action.quit:
         print('Goodbye!')
@@ -140,28 +140,34 @@ def create_prompt() -> ChatCompletionUserMessageParam:
     elif prompt == Action.clear:
         state.reset_chat()
         os.system('cls' if os.name == 'nt' else 'clear')
-        return create_prompt()
+        return new_prompt()
     elif prompt == Action.help:
         print('\n- Available commands:')
         for action in Action.__dict__.keys():
             if not action.startswith('__'):
                 print(f'\t- [bold blue]{action}[/]')
         print()
-        return create_prompt()
+        return new_prompt()
     elif prompt == Action.chat:
         if state.mode == 'chat':
-            print('[red]- Chat mode is already active[/] (type "clear" to reset)')
-            return create_prompt()
+            print('[red]- Chat mode is already active[/] (type "clear" to reset and start a new chat)\n')
+            return new_prompt()
         state.mode = 'chat'
-        print('[bold green]- MODE:[/] [bold blue]chat[/]')
-        return create_prompt()
+        print('[bold green]- MODE:[/] [bold blue]chat[/]\n')
+        return new_prompt()
     elif prompt == Action.image:
         if state.mode == 'image':
-            print('[bold red]Image mode is already active[/]')
-            return create_prompt()
+            print('[bold red]Image mode is already active[/]\n')
+            return new_prompt()
         state.mode = 'image'
-        print('[bold green]- MODE:[/] [bold blue]image[/]')
-        return create_prompt()
+
+        print('[bold green]- MODE:[/] [bold blue]image[/]\n')
+
+        print('Enter a prompt to generate an image. For example:')
+        example = 'A white siamese cat with bright green eyes, sitting on a red pillow'
+        print(f'[dim]{example}[/]\n')
+
+        return new_prompt()
 
     return {
         'role': 'user',
@@ -201,7 +207,6 @@ def generate_image(prompt: ChatCompletionUserMessageParam) -> None:
     with Status('[bold blue]Generating image...[/]'):
         response = ai.images.generate(
             model='dall-e-3',
-            # prompt='A white siamese cat with bright green eyes, sitting on a red pillow',
             prompt=str(prompt['content']),
             size='1024x1024',
             n=1,
@@ -235,7 +240,7 @@ def chat_repl(prompt: ChatCompletionUserMessageParam) -> None:
 def repl() -> None:
     while 1:
         try:
-            prompt = create_prompt()
+            prompt = new_prompt()
 
             if state.mode == 'chat':
                 chat_repl(prompt)
@@ -254,9 +259,9 @@ def repl() -> None:
 def main() -> None:
     create_tables()
 
-    print('\n\tWelcome to the AI Playground!')
-    print('\tType "help" to see a list of available commands.')
-    print('\tType "quit" or press "Ctrl+C" to exit.')
-    print()
+    print('\nWelcome to the AI Playground!\n')
+    print('Type "help" to see a list of available commands.')
+    print('Type "quit" or press "Ctrl+C" to exit.\n')
+    print('Or just ask me me anything you want!\n')
 
     repl()
