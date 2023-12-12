@@ -11,8 +11,11 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from openai.types.chat import ChatCompletionAssistantMessageParam,  ChatCompletionMessageParam, ChatCompletionUserMessageParam
 from PIL import Image
+from openai.types.chat.completion_create_params import ResponseFormat
 from rich import print
 from rich.status import Status
+
+from .settings import settings, chat_settings
 
 
 load_dotenv('.env.local')
@@ -21,10 +24,6 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not OPENAI_API_KEY:
     OPENAI_API_KEY = input('Enter your OpenAI API key: ')
 
-
-settings = dict(
-    model='gpt-3.5-turbo',
-)
 
 ai = OpenAI(api_key=OPENAI_API_KEY)
 db = sqlite3.connect('data.db')
@@ -117,57 +116,94 @@ def insert_message(message: ChatCompletionMessageParam) -> int:
 class Action:
     chat = 'chat'
     image = 'image'
+    settings = 'settings'
+    set = 'set'
     clear = 'clear'
     quit = 'quit'
     help = 'help'
 
 
-def new_prompt() -> ChatCompletionUserMessageParam:
-    print('[bold green]> [/]', end='')
-    prompt = input()
+def handle_action(prompt: str):
+    if not prompt.startswith(settings.action_prefix):
+        return
 
-    # helth check
+    action, *args = prompt[1:].split()
 
-    if not prompt.strip():
-        return new_prompt()
-    elif len(prompt.split()) == 1 and prompt not in Action.__dict__.keys():
+    if action not in Action.__dict__.keys():
         print(f'[red]- Invalid command[/] "{prompt}" (type "help" to see a list of available commands)\n')
         return new_prompt()
 
-    if prompt == Action.quit:
+    if action == Action.set:
+        if len(args) != 2:
+            # tell the user to use the correct forma set needs 2 args
+            print(f'[red]- Invalid command[/] "{prompt}" (set needs 2 arguments)\n')
+            return new_prompt()
+
+        setting, value = args
+
+        if setting not in chat_settings.__dict__.keys():
+            print(f'[red]- Invalid setting[/] "{setting}" (type "chat_settings" to see a list of available settings)\n')
+            return new_prompt()
+
+        try:
+            setattr(chat_settings, setting, value)
+            print(f'\n- [bold green]{setting.capitalize()}[/] set to [bold blue]{value}[/]\n')
+            return new_prompt()
+        except ValueError as e:
+            print(f'\n[red]- Invalid value[/] "{value}", {e}\n')
+            return new_prompt()
+
+    if action == Action.quit:
         print('Goodbye!')
         sys.exit(0)
-    elif prompt == Action.clear:
+    elif action == Action.clear:
         state.reset_chat()
         os.system('cls' if os.name == 'nt' else 'clear')
         return new_prompt()
-    elif prompt == Action.help:
-        print('\n- Available commands:')
-        for action in Action.__dict__.keys():
-            if not action.startswith('__'):
-                print(f'\t- [bold blue]{action}[/]')
-        print()
+    elif action == Action.help:
+        show_help()
         return new_prompt()
-    elif prompt == Action.chat:
+    elif action == Action.chat:
         if state.mode == 'chat':
             print('[red]- Chat mode is already active[/] (type "clear" to reset and start a new chat)\n')
             return new_prompt()
         state.mode = 'chat'
         print('[bold green]- MODE:[/] [bold blue]chat[/]\n')
         return new_prompt()
-    elif prompt == Action.image:
+    elif action == Action.image:
         if state.mode == 'image':
             print('[bold red]Image mode is already active[/]\n')
             return new_prompt()
         state.mode = 'image'
 
-        print('[bold green]- MODE:[/] [bold blue]image[/]\n')
+        print('\n[bold green]- MODE:[/] [bold blue]image[/]\n')
 
         print('Enter a prompt to generate an image. For example:')
         example = 'A white siamese cat with bright green eyes, sitting on a red pillow'
         print(f'[dim]{example}[/]\n')
 
         return new_prompt()
+    elif action == Action.settings:
+        if state.mode == 'chat':
+            print('\n[bold green]- Chat Settings:')
+            for k, v in chat_settings.__dict__.items():
+                print(f'\t- {k}: [bold blue]{v}[/]')
+            print()
+            return new_prompt()
+        elif state.mode == 'image':
+            print('\n[bold green]- Image Settings:')
+            print('TODO')
+            return new_prompt()
+
+
+def new_prompt() -> ChatCompletionUserMessageParam:
+    print('[bold green]> [/]', end='')
+    prompt = input().strip()
+
+    if not prompt:
+        return new_prompt()
+
+    handle_action(prompt)
 
     return {
         'role': 'user',
@@ -175,12 +211,20 @@ def new_prompt() -> ChatCompletionUserMessageParam:
     }
 
 
+def show_help() -> None:
+    print('\n- Available commands:')
+    for action in Action.__dict__.keys():
+        if not action.startswith('__'):
+            print(f'\t- [bold blue]{action}[/]')
+    print()
+
+
 def streaming_response() -> ChatCompletionAssistantMessageParam:
     print()
     with Status('[bold blue]Thinking...[/]'):
         stream = ai.chat.completions.create(
             stream=True,
-            model=settings['model'],
+            model=chat_settings.model,
             messages=state.messages
         )
 
@@ -201,13 +245,14 @@ def streaming_response() -> ChatCompletionAssistantMessageParam:
 
 def generate_image(prompt: ChatCompletionUserMessageParam) -> None:
     content = str(prompt['content'])
+    file_name = f'{content[0:len(content) // 2].replace(' ', '_')}_{int(time.time())}.png'
 
     output = Path('output')
 
     with Status('[bold blue]Generating image...[/]'):
         response = ai.images.generate(
             model='dall-e-3',
-            prompt=str(prompt['content']),
+            prompt=content,
             size='1024x1024',
             n=1,
             response_format='b64_json',
@@ -218,7 +263,6 @@ def generate_image(prompt: ChatCompletionUserMessageParam) -> None:
         raise Exception('Could not generate image')
 
     data = base64.b64decode(img.b64_json)
-    file_name = f'{content[0:len(content) // 2].replace(' ', '_')}_{int(time.time())}.png'
 
     output.mkdir(parents=True, exist_ok=True)
     (output / file_name).write_bytes(data)
