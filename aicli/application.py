@@ -141,7 +141,7 @@ class Command:
 
     def set(self, setting: str, value: str):
         if state.mode == 'chat':
-            setattr(settings, setting, value)
+            setattr(chat_settings, setting, value)
         elif state.mode == 'image':
             print('TODO')
 
@@ -162,13 +162,14 @@ cmd = Command()
 def execute(action: str, *args: str) -> None:
     try:
         getattr(cmd, action)(*args)
-    except (AttributeError, TypeError) as e:
+    except (AttributeError, TypeError, ValueError) as e:
         if isinstance(e, AttributeError):
             print(f'Unknown command: {action}')
         elif isinstance(e, TypeError):
             print(f'Invalid arguments: {args}')
-        else:
-            print('Unknown error')
+        elif isinstance(e, ValueError):
+            print(f'Invalid value: {args}', e)
+        print('\n')
 
 
 def handle_command(prompt: str):
