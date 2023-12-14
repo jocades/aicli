@@ -11,9 +11,9 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from openai.types.chat import ChatCompletionAssistantMessageParam,  ChatCompletionMessageParam, ChatCompletionUserMessageParam
 from PIL import Image
-from openai.types.chat.completion_create_params import ResponseFormat
 from rich import print
 from rich.status import Status
+
 
 from .settings import settings, chat_settings
 
@@ -113,97 +113,79 @@ def insert_message(message: ChatCompletionMessageParam) -> int:
     return cur.lastrowid
 
 
-class Action:
-    chat = 'chat'
-    image = 'image'
-    settings = 'settings'
-    set = 'set'
-    clear = 'clear'
-    quit = 'quit'
-    help = 'help'
+class Command:
+    def help(self):
+        show_help()
 
-
-def handle_action(prompt: str):
-    if not prompt.startswith(settings.action_prefix):
-        return
-
-    action, *args = prompt[1:].split()
-
-    if action not in Action.__dict__.keys():
-        print(f'[red]- Invalid command[/] "{prompt}" (type "help" to see a list of available commands)\n')
-        return new_prompt()
-
-    if action == Action.set:
-        if len(args) != 2:
-            # tell the user to use the correct forma set needs 2 args
-            print(f'[red]- Invalid command[/] "{prompt}" (set needs 2 arguments)\n')
-            return new_prompt()
-
-        setting, value = args
-
-        if setting not in chat_settings.__dict__.keys():
-            print(f'[red]- Invalid setting[/] "{setting}" (type "chat_settings" to see a list of available settings)\n')
-            return new_prompt()
-
-        try:
-            setattr(chat_settings, setting, value)
-            print(f'\n- [bold green]{setting.capitalize()}[/] set to [bold blue]{value}[/]\n')
-            return new_prompt()
-        except ValueError as e:
-            print(f'\n[red]- Invalid value[/] "{value}", {e}\n')
-            return new_prompt()
-
-    if action == Action.quit:
+    def quit(self):
         print('Goodbye!')
         sys.exit(0)
-    elif action == Action.clear:
+
+    def clear(self):
         state.reset_chat()
         os.system('cls' if os.name == 'nt' else 'clear')
-        return new_prompt()
-    elif action == Action.help:
-        show_help()
-        return new_prompt()
-    elif action == Action.chat:
+
+    def chat(self):
         if state.mode == 'chat':
-            print('[red]- Chat mode is already active[/] (type "clear" to reset and start a new chat)\n')
-            return new_prompt()
+            print('\n[red]- Chat mode is already active[/] (type "clear" to reset and start a new chat)\n')
+            return
         state.mode = 'chat'
         print('[bold green]- MODE:[/] [bold blue]chat[/]\n')
-        return new_prompt()
-    elif action == Action.image:
+
+    def image(self):
         if state.mode == 'image':
-            print('[bold red]Image mode is already active[/]\n')
-            return new_prompt()
+            print('\n[red]- Image mode is already active[/] (type "clear" to reset and start a new chat)\n')
+            return
         state.mode = 'image'
+        print('[bold green]- MODE:[/] [bold blue]image[/]\n')
 
-        print('\n[bold green]- MODE:[/] [bold blue]image[/]\n')
+    def set(self, setting: str, value: str):
+        if state.mode == 'chat':
+            setattr(settings, setting, value)
+        elif state.mode == 'image':
+            print('TODO')
 
-        print('Enter a prompt to generate an image. For example:')
-        example = 'A white siamese cat with bright green eyes, sitting on a red pillow'
-        print(f'[dim]{example}[/]\n')
-
-        return new_prompt()
-    elif action == Action.settings:
+    def settings(self):
         if state.mode == 'chat':
             print('\n[bold green]- Chat Settings:')
             for k, v in chat_settings.__dict__.items():
                 print(f'\t- {k}: [bold blue]{v}[/]')
             print()
-            return new_prompt()
         elif state.mode == 'image':
             print('\n[bold green]- Image Settings:')
             print('TODO')
-            return new_prompt()
+
+
+cmd = Command()
+
+
+def execute(action: str, *args: str) -> None:
+    try:
+        getattr(cmd, action)(*args)
+    except (AttributeError, TypeError) as e:
+        if isinstance(e, AttributeError):
+            print(f'Unknown command: {action}')
+        elif isinstance(e, TypeError):
+            print(f'Invalid arguments: {args}')
+        else:
+            print('Unknown error')
+
+
+def handle_command(prompt: str):
+    action, *args = prompt[1:].strip().split()
+    execute(action, *args)
 
 
 def new_prompt() -> ChatCompletionUserMessageParam:
     print('[bold green]> [/]', end='')
-    prompt = input().strip()
+    prompt = input()
 
-    if not prompt:
+    if not prompt.strip():
         return new_prompt()
 
-    handle_action(prompt)
+    if prompt.startswith(settings.action_prefix):
+        handle_command(prompt)
+        return new_prompt()
 
     return {
         'role': 'user',
@@ -213,9 +195,9 @@ def new_prompt() -> ChatCompletionUserMessageParam:
 
 def show_help() -> None:
     print('\n- Available commands:')
-    for action in Action.__dict__.keys():
-        if not action.startswith('__'):
-            print(f'\t- [bold blue]{action}[/]')
+    for cmd in dir(Command):
+        if not cmd.startswith('__'):
+            print(f'\t- [bold blue]{cmd}[/]')
     print()
 
 

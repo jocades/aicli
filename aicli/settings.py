@@ -1,13 +1,13 @@
 from pydantic import BaseModel, Field
 from openai.types.chat.completion_create_params import ResponseFormat
-from typing import Literal, Optional, NotRequired
+from typing import Literal
 
 
 __all__ = ['settings', 'chat_settings']
 
 
 class Settings(BaseModel, validate_assignment=True):
-    action_prefix: str = Field(default=':', max_length=100)
+    action_prefix: str = Field(default=':', max_length=1)
 
 
 settings = Settings()
